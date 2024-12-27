@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -66,6 +69,21 @@ func newLoggerProvider(ctx context.Context, r *resource.Resource, logEndpoint st
 	return provider, nil
 }
 
+func newMeterProvider(ctx context.Context, r *resource.Resource) (*metric.MeterProvider, error) {
+	metricExporter, err := stdoutmetric.New()
+	if err != nil {
+		return nil, err
+	}
+
+	meterProvider := metric.NewMeterProvider(
+		metric.WithResource(r),
+		metric.WithReader(metric.NewPeriodicReader(metricExporter,
+			metric.WithInterval(3*time.Second))),
+	)
+
+	return meterProvider, nil
+}
+
 func SetupTelemetry(ctx context.Context) {
 	// Setup our service resource (Name, Version, ect)
 	r, err := newResource("GO-ExampleProducer", "0.1.0")
@@ -89,4 +107,12 @@ func SetupTelemetry(ctx context.Context) {
 	}
 
 	logger = zap.New(otelzap.NewCore("al.de/andy/monitoring-stack/producer/golang", otelzap.WithLoggerProvider(loggerProvider)))
+
+	// Create a metric provider
+	meterProvider, err := newMeterProvider(ctx, r)
+	if err != nil {
+		log.Fatalf("failed to initialize meter provider: %v", err)
+	}
+
+	otel.SetMeterProvider(meterProvider)
 }

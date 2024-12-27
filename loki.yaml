@@ -29,5 +29,13 @@ schema_config:
       prefix: index_
       period: 24h
 
+limits_config:
+  # Enable log-volume endpoints.
+  volume_enabled: true
+
+  # The maximum number of aggregated series in a log-volume response
+  # CLI flag: -limits.volume-max-series
+  volume_max_series: 1000
+
 #ruler:
 #  alertmanager_url: http:/localhost:9093

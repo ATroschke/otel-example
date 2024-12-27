@@ -7,12 +7,20 @@ import (
 	"time"
 
 	"github.com/adhocore/gronx/pkg/tasker"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+)
+
+var (
+	totalFunctionsCounter metric.Int64Counter
+	functionHistogram     metric.Float64Histogram
 )
 
 func main() {
 	ctx := context.Background()
 	SetupTelemetry(ctx)
+	setupMeter()
 
 	taskr := tasker.New(tasker.Option{
 		Verbose: true,
@@ -34,10 +42,37 @@ func main() {
 	taskr.Run()
 }
 
+func setupMeter() {
+	// Setup counters
+	meter := otel.Meter("al.de/andy/monitoring-stack/producer/golang")
+	fnCounter, err := meter.Int64Counter(
+		"fn.counter",
+		metric.WithDescription("Number of function calls"),
+		metric.WithUnit("{call}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	totalFunctionsCounter = fnCounter
+
+	histogram, err := meter.Float64Histogram(
+		"fn.duration",
+		metric.WithDescription("The duration of function execution"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	functionHistogram = histogram
+}
+
 func handleExampleTask(ctx context.Context, duration time.Duration, childAmount int, childDepth int, parallel bool) {
 	if childDepth <= 0 {
 		return
 	}
+
+	// Count up the total amount of times this was called
+	totalFunctionsCounter.Add(ctx, 1)
 
 	// Generate a random name for work instead of just using "test"
 	taskName := fmt.Sprintf("Task-%d", rand.Intn(1000))
@@ -73,4 +108,7 @@ func handleExampleTask(ctx context.Context, duration time.Duration, childAmount 
 	workDuration := end.Sub(time.Now())
 	time.Sleep(workDuration)
 	logger.Info("Work completed", zap.String("taskname", taskName))
+
+	d := time.Since(start)
+	functionHistogram.Record(ctx, d.Seconds())
 }
